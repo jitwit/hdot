@@ -5,7 +5,6 @@ module Main where
 import Algebra.Graph.AdjacencyMap
 import Algebra.Graph.AdjacencyMap.Algorithm
 import Algebra.Graph.Export.Dot
-import Data.Set (Set,fromList,member)
 import Data.Tree
 import Data.List
 
@@ -45,18 +44,35 @@ moduleDeps project file = do
   let target = module_of_path project file
   pure [ (d,target) | d <- deps ]
 
+getModulesFrom :: FilePath -> IO [(ModuleName,ModuleName)]
+getModulesFrom base = do
+  files <- reifyDir "hs" base
+  concat <$> traverse (moduleDeps base) files
+
+getGraph :: [FilePath] -> IO (AdjacencyMap ModuleName)
+getGraph paths = edges . concat <$> traverse getModulesFrom paths
+
+--module_edges :: FilePath -> FilePath -> IO [(ModuleName,ModuleName)]
+--module_edges base path = do
+--  files <- reifyDir "hs" path
+--  concat <$> mapM (moduleDeps base) files
+
+--module_graph :: FilePath -> [FilePath] -> IO (AdjacencyMap ModuleName)
+--module_graph project paths = edges . concat <$> traverse (module_edges project) paths
+  
 -- haskellProjectGraph :: FilePath ->
-haskellProjectGraph project = do
-  files <- reifyDir "hs" project
-  deps <- concat <$> mapM (moduleDeps project) files
-  let local_modules = module_of_path project <$> files
-      loc = fromList local_modules
-      g = edges deps
-      g' = -- transitiveClosure $
-        induce (`member`loc) g
-  print g'
-  writeFile "alga" $ exportAsIs g'
-  callCommand "dot -Tpdf < alga > alga.pdf && open alga.pdf"
+haskellProjectGraph project paths = do
+  g <- getGraph paths
+  let out = project -<.> "svg"
+      cmd = unwords ["dot","-Tsvg","<",project,">",out,"&&","open",out]
+--  files <- reifyDir "hs" project
+--  deps <- concat <$> mapM (moduleDeps project) files
+--  let local_modules = module_of_path project <$> files
+--      g = edges deps
+--      g' = -- transitiveClosure $
+--        induce (`elem`local_modules) g
+  writeFile project $ exportAsIs g
+  callCommand cmd
 
 main :: IO ()
-main = haskellProjectGraph "../alga/src"
+main = haskellProjectGraph "alga" ["../alga/src"]
